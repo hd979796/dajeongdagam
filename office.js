@@ -242,7 +242,7 @@ function drawMsgs(box,h){
   var all=h.st.msgs.concat(h.local);
   if(!all.length){var e=document.createElement("p");e.className="empty-msg";e.textContent="아직 올린 말이 없습니다.";box.appendChild(e);}
   all.forEach(function(m){
-    var d=document.createElement("div"); d.className="m "+(m.from==="대표"?"me":"lead"); d.textContent=m.text;
+    var d=document.createElement("div"); d.className="m "+(m.from==="대표"?"me":"lead"); d.textContent=m.text+(m.ph?(m.text?"\n":"")+"[사진 "+m.ph+"장]":"");
     var meta=document.createElement("span"); meta.className="meta"; meta.textContent=(m.from==="대표"?"대표":"팀장")+(m.t?" · "+m.t:"");
     if(m.pending){var w=document.createElement("span");w.className="wait"+(m.st==="failed"?" fail":"");w.textContent=" · "+sentLabel(m);meta.appendChild(w);}
     d.appendChild(meta);
@@ -282,12 +282,65 @@ document.addEventListener("office:reply",function(e){
   } else { it.st=d.state; if(d.num) it.num=d.num; }
   redraw();
 });
+/* ── 사진 붙이기 (보안 07, 개발 30): [사진] 단추로 고르거나 글 칸에 붙여 넣으면 줄인 그림을 크게 미리 보이고 경고 한 줄.
+   보내기는 그 칸의 보내기 단추를 누를 때만 (붙여 넣기만으로는 안 감). 그림은 lock.js 의 preparePhoto 가 줄이고 EXIF 를 뺀다 ── */
+var PHOTO_WARN_TXT="사진에 비밀번호·QR·고객 이름·전화번호·알림이 찍혀 있지 않은지 보고 보내 주세요.";   /* lock.js 가 없을 때만. 글은 OfficeLock.PHOTO_WARN 한 곳 (보안 08 권고) */
+function photoKit(formId,textId,btnId){
+  var form=$(formId), ta=$(textId), btn=$(btnId), kit={list:[],busy:0};
+  var box=document.createElement("div"); box.className="photos"; box.hidden=true;
+  var row=document.createElement("div"); row.className="ph-row"; box.appendChild(row);
+  var warn=document.createElement("p"); warn.className="ph-warn"; warn.textContent=PHOTO_WARN_TXT; box.appendChild(warn);
+  form.parentNode.insertBefore(box,form);
+  var inp=document.createElement("input"); inp.type="file"; inp.accept="image/png,image/jpeg,image/webp"; inp.multiple=true; inp.hidden=true;
+  var pb=document.createElement("button"); pb.type="button"; pb.className="phbtn"; pb.textContent="사진"; pb.setAttribute("aria-label","사진 붙이기");
+  form.insertBefore(pb,ta); form.appendChild(inp);
+  function max(){ var L=window.OfficeLock; return (L&&L.PHOTO_PER_SEND)||4; }
+  function upd(){ btn.disabled=kit.busy>0||!(ta.value.trim()||kit.list.length); }
+  function draw(){
+    var L=window.OfficeLock; warn.textContent=(L&&L.PHOTO_WARN)||PHOTO_WARN_TXT;
+    row.textContent="";
+    kit.list.forEach(function(p,i){
+      var f=document.createElement("figure"); f.className="ph";
+      var im=new Image(); im.src=p.preview; im.alt="보낼 사진 "+(i+1); f.appendChild(im);
+      var x=document.createElement("button"); x.type="button"; x.className="ph-x"; x.textContent="×"; x.setAttribute("aria-label","사진 "+(i+1)+" 빼기");
+      x.addEventListener("click",function(){ var q=kit.list.splice(i,1)[0]; if(q){q.blob=null;q.preview="";} draw(); });
+      f.appendChild(x); row.appendChild(f);
+    });
+    box.hidden=!kit.list.length; upd(); barSize();
+  }
+  async function add(files){
+    var L=window.OfficeLock;
+    if(!L||typeof L.preparePhoto!=="function"){ alert("사진 기능(lock.js)이 없어 붙일 수 없습니다."); return; }
+    for(var i=0;i<files.length;i++){
+      if(kit.list.length+kit.busy>=max()){ alert("사진은 한 번에 "+max()+"장까지입니다."); break; }
+      kit.busy++; upd();
+      try{ kit.list.push(await L.preparePhoto(files[i])); }catch(err){ alert(err&&err.photo?err.message:"이 사진은 열 수 없습니다."); }
+      kit.busy--; draw();
+    }
+  }
+  pb.addEventListener("click",function(){ inp.click(); });
+  inp.addEventListener("change",function(){ var fs=Array.prototype.slice.call(inp.files||[]); inp.value=""; add(fs); });
+  ta.addEventListener("paste",function(e){
+    var it=(e.clipboardData&&e.clipboardData.files)||[], fs=[];
+    for(var i=0;i<it.length;i++) if(/^image\//.test(it[i].type)) fs.push(it[i]);
+    if(fs.length){ e.preventDefault(); add(fs); }
+  });
+  ta.addEventListener("input",upd);
+  kit.take=function(){ return kit.list.slice(); };
+  kit.clear=function(){ kit.list=[]; draw(); };
+  /* 잠그거나 나갈 때: 고르고 안 보낸 사진을 지운다 (보안 08 고칠 줄 1). 보내는 중인 것은 lock.js 가 이미 따로 들고 있다 */
+  kit.drop=function(){ kit.list.forEach(function(p){p.blob=null;p.preview="";}); kit.list=[]; draw(); };   /* 목록만 놓는다: 보낸 사진은 lock.js 가 다 올린 뒤에 비운다 (먼저 비우면 둘째 장부터 빈 채로 간다) */
+  kit.upd=upd;
+  return kit;
+}
+
 /* 보내기 한 곳: 대화창·아래 줄·고르기 단추 (lock.js 의 onReply 가 막으면 false) */
-function sendReply(h,text){
-  var item={from:"대표",t:nowHM(),text:text,pending:true,st:"sending"};
+function sendReply(h,text,photos){
+  var ph=(photos&&photos.length)||0;
+  var item={from:"대표",t:nowHM(),text:text,pending:true,st:"sending",ph:ph};
   h.local.push(item);    /* 먼저 넣어 둔다: lock.js 의 결과 소식이 바로 올 수 있다 */
   var sent=false;
-  try{ sent = typeof office.onReply==="function" && office.onReply(h.id,text)!==false; }catch(err){ sent=false; }
+  try{ sent = typeof office.onReply==="function" && office.onReply(h.id,text,ph?photos:undefined)!==false; }catch(err){ sent=false; }
   if(!sent){ h.local.splice(h.local.indexOf(item),1); redraw(); return false; }
   h.handAck=sig(h); h.urgAck=sig(h); h.wasRaised=false;
   render(h); alarms(); redraw();
@@ -393,13 +446,13 @@ document.addEventListener("keydown",function(e){if(e.key==="Escape"&&openId)clos
 $("ackBtn").addEventListener("click",function(){
   var h=H[openId]; if(!h) return; h.urgAck=sig(h); h.wasRaised=raised(h); render(h); alarms(); drawChat(); $("reply").focus();
 });
-$("reply").addEventListener("input",function(){$("sendBtn").disabled=!this.value.trim()});
+var chatKit=photoKit("compose","reply","sendBtn");
 $("reply").addEventListener("keydown",function(e){if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)){e.preventDefault();$("compose").requestSubmit()}});
 $("compose").addEventListener("submit",function(e){
-  e.preventDefault(); var h=H[openId], text=$("reply").value.trim(); if(!h||!text) return;
-  /* 먼저 전달(lock.js: 깃헙 새 이슈 화면). 막히면(1,000자·키·전화번호) 글을 칸에 그대로 두고 끝 (개발 26) */
-  if(!sendReply(h,text)) return;
-  $("reply").value=""; $("sendBtn").disabled=true;
+  e.preventDefault(); var h=H[openId], text=$("reply").value.trim(); if(!h||(!text&&!chatKit.list.length)||chatKit.busy) return;
+  /* 먼저 전달(lock.js: 깃헙 새 이슈 화면). 막히면(1,000자·키·전화번호) 글을 칸에 그대로 두고 끝 (개발 26). 사진은 이 단추를 누를 때만 간다 (보안 07) */
+  if(!sendReply(h,text,chatKit.take())) return;
+  $("reply").value=""; chatKit.clear();
 });
 
 /* ── 2. 지금 하는 일 말풍선 ── */
@@ -446,12 +499,12 @@ function talkTo(id){ pick(id); setFold(false); $("barText").focus(); }
 $("barStrip").addEventListener("click",function(){ setFold(false); $("barText").focus(); });
 $("foldBtn").addEventListener("click",function(){ setFold(true); $("barStrip").focus(); });
 function drawBar(){ var h=H[barId]; if(h) drawMsgs($("barlog"),h); }
-$("barText").addEventListener("input",function(){$("barSend").disabled=!this.value.trim()});
+var barKit=photoKit("barForm","barText","barSend");
 $("barText").addEventListener("keydown",function(e){if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)){e.preventDefault();$("barForm").requestSubmit()}});
 $("barForm").addEventListener("submit",function(e){
-  e.preventDefault(); var h=H[barId], text=$("barText").value.trim(); if(!h||!text) return;
-  if(!sendReply(h,text)) return;
-  $("barText").value=""; $("barSend").disabled=true;
+  e.preventDefault(); var h=H[barId], text=$("barText").value.trim(); if(!h||(!text&&!barKit.list.length)||barKit.busy) return;
+  if(!sendReply(h,text,barKit.take())) return;
+  $("barText").value=""; barKit.clear();
 });
 $("logBtn").addEventListener("click",function(){
   logByUser=true; var on=!$("bar").classList.contains("open"); $("bar").classList.toggle("open",on); this.setAttribute("aria-expanded",String(on)); barSize();
@@ -498,7 +551,9 @@ function unload(reason){
   load({heads:[]});
   entered=false; sirenOff(); alarms();
   $("updated").hidden=true; $("updated").textContent="";
-  $("leave").hidden=true; $("bar").hidden=true; $("barText").value=""; $("barlog").textContent=""; barSize(); pick("pd");
+  $("reply").value=""; $("barText").value="";
+  chatKit.drop(); barKit.drop();       /* 고른 사진도 지운다 (보안 08). 글 칸을 먼저 비워야 보내기 단추가 꺼진다 */
+  $("leave").hidden=true; $("bar").hidden=true; $("barlog").textContent=""; barSize(); pick("pd");
   $("gate").hidden=false; gateMsg(reason||""); $("gatePw").focus();
 }
 setTimeout(function(){$("gatePw").focus()},0);

@@ -312,7 +312,16 @@
   .bar .compose{padding:6px 12px}
   .bar .replynote{padding:0 14px 2px}
   /* 대화 줄 접기 (대표님 12:42) */
-  .bar.fold .bar-top,.bar.fold .barlog,.bar.fold .compose,.bar.fold .replynote{display:none}
+  .bar.fold .bar-top,.bar.fold .barlog,.bar.fold .compose,.bar.fold .replynote,.bar.fold .photos{display:none}
+  /* 사진 붙이기 (보안 07, 개발 30): 크게 미리 보기 + 경고 한 줄 */
+  .photos{padding:8px 12px 0}
+  .photos[hidden]{display:none}
+  .ph-row{display:flex;gap:8px;flex-wrap:wrap}
+  .ph{position:relative;margin:0}
+  .ph img{display:block;max-width:100%;max-height:min(260px,34vh);border-radius:8px;box-shadow:0 0 0 2px #ead9bd}
+  .ph-x{position:absolute;top:4px;right:4px;width:28px;height:28px;border:0;border-radius:50%;background:rgba(43,33,24,.75);color:#fff;font-size:17px;line-height:1;cursor:pointer}
+  .ph-warn{margin:6px 0 0;color:#b0532f;font-weight:700;font-size:13px;line-height:1.4}
+  .compose .phbtn{background:#D8C6A4;color:var(--ink);padding:0 12px}
   .barstrip{display:none;width:100%;align-items:center;gap:8px;border:0;background:transparent;padding:8px 16px;font-size:15px;font-weight:800;text-align:left;cursor:pointer;color:var(--ink)}
   .bar.fold .barstrip{display:flex}
   .barstrip .to{color:var(--ink2);font-weight:700;font-size:14px}

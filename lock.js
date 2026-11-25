@@ -205,7 +205,10 @@
 	}
 	function linkOpen(headId, text) { g.open(replyUrl(headId, text), "_blank", "noopener,noreferrer"); }
 	// 보냄을 시작했으면 true (결과는 "office:reply" 소식과 알림 띠로). 막았으면 알림을 띄우고 false
-	function onReply(headId, text) {
+	//   photos: preparePhoto 가 돌려준 것의 배열(있으면 사진 보내기. 보안 07)
+	function onReply(headId, text, photos) {
+		var list = Array.isArray(photos) ? photos.filter(Boolean) : [];
+		if (list.length) return onReplyPhotos(headId, text, list);
 		var why = replyProblem(text);
 		if (why) { if (g.alert) g.alert(why); return false; }
 		touch();
@@ -218,28 +221,35 @@
 	function ghHeaders(t) {
 		return { Authorization: "Bearer " + t, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "Content-Type": "application/json" };
 	}
-	async function postIssue(headId, text) {
-		var t = mem && mem.gh, r = null;
+	// body: 이슈 본문(없으면 text). photos: 이미 올린 사진 [{path, sha}] — 이슈를 못 만들면 지우고, 되돌리기 때도 지운다
+	async function postIssue(headId, text, body, photos) {
+		var t = mem && mem.gh, r = null, pics = photos || [];
 		try {
-			r = await fetch(API + "/issues", { method: "POST", headers: ghHeaders(t), body: JSON.stringify({ title: replyTitle(headId), body: text + MARK }) });
+			r = t ? await fetch(API + "/issues", { method: "POST", headers: ghHeaders(t), body: JSON.stringify({ title: replyTitle(headId), body: String(body == null ? text : body) + MARK }) }) : null;
 		} catch (e) { r = null; }
 		t = null;
 		if (r && r.status === 201) {
 			var num = 0;
 			try { num = (await r.json()).number | 0; } catch (e) { num = 0; }
 			emit({ headId: headId, text: text, state: "sent", num: num });
-			toastSent(headId, text, num);
+			toastSent(headId, text, num, pics);
 			return;
 		}
 		var gone = r && (r.status === 401 || r.status === 403 || r.status === 404);
 		emit({ headId: headId, text: text, state: "failed" });
+		if (pics.length) {
+			// 사진은 깃헙 새 탭으로 못 옮긴다: 올린 사진을 지우고 알리기만 (반쪽짜리 쪽지 막기, 보안 07 4절 순서)
+			await dropPhotos(headId, pics);
+			toast((gone ? "토큰이 만료됐거나 지워졌습니다." : "보내지 못했습니다.") + " 사진은 지웠습니다. 다시 보내 주세요.", "", null, 8000);
+			return;
+		}
 		toast((gone ? "토큰이 만료됐거나 지워졌습니다." : "보내지 못했습니다.") + " 깃헙 화면으로 보낼 수 있습니다.",
 			"깃헙 화면으로 보내기", function () { linkOpen(headId, text); emit({ headId: headId, text: text, state: "linked" }); }, 15000);
 	}
-	// 보낸 뒤 5초 되돌리기 (보안 04 5-5): 그 이슈를 닫는다
-	function toastSent(headId, text, num) {
-		var done = false;
-		toast("보냈습니다" + (num ? " #" + num : ""), "되돌리기", async function () {
+	// 보낸 뒤 5초 되돌리기 (보안 04 5-5): 그 이슈를 닫는다. 사진이 있으면 올린 파일도 지운다 (보안 07 3절 3)
+	function toastSent(headId, text, num, photos) {
+		var done = false, pics = photos || [];
+		toast("보냈습니다" + (num ? " #" + num : "") + (pics.length ? " (사진 " + pics.length + "장)" : ""), "되돌리기", async function () {
 			if (done) return; done = true;
 			var t = mem && mem.gh, ok = false;
 			if (t && num) {
@@ -249,9 +259,146 @@
 				} catch (e) { ok = false; }
 			}
 			t = null;
+			if (ok && pics.length) ok = await dropPhotos(headId, pics);
 			if (ok) { emit({ headId: headId, text: text, state: "undone", num: num }); toast("되돌렸습니다" + (num ? " (#" + num + " 닫음)" : ""), "", null, 3000); }
 			else toast("되돌리지 못했습니다. 총괄이사에게 말씀해 주세요.", "", null, 6000);
 		}, 5000);
+	}
+
+	// ---------------------------------------------------------------- 사진 보내기 (보안 07 4절. 개발 30)
+	// 고른 사진을 줄여(EXIF 빠짐) 비공개 쪽지함에 파일로 올리고, 다 되면 이슈 본문에 경로를 적는다.
+	// 하나라도 못 올리면 이슈를 만들지 않고 올린 것을 지운다. 출입증(Contents: write)이 있을 때만. 바깥 요청은 api.github.com 뿐.
+	var PHOTO_TYPES = ["image/png", "image/jpeg", "image/webp"];
+	var PHOTO_RAW_MAX = 25 * 1024 * 1024;        // 원본 25MB 넘으면 거절
+	var PHOTO_SIDE = 1600;                       // 긴 변
+	var PHOTO_QUAL = [0.85, 0.75, 0.6];          // 1.5MB 넘으면 차례로 낮춘다
+	var PHOTO_MAX = 1.5 * 1024 * 1024;           // 올릴 크기
+	var PHOTO_PER_SEND = 4;                      // 한 번에
+	var PHOTO_DAY_MAX = 50;                      // 하루 (메모리 안 숫자, 저장 안 함)
+	var PHOTO_WARN = "사진에 비밀번호·QR·고객 이름·전화번호·알림이 찍혀 있지 않은지 보고 보내 주세요.";
+	var photoDay = { d: "", n: 0 };
+	function photoErr(t) { var e = new Error(t); e.photo = true; return e; }
+	function pad2(n) { return (n < 10 ? "0" : "") + n; }
+	function dayKey(d) { return d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()); }
+	function photoDept(headId) { return String(headId).replace(/[^A-Za-z0-9]/g, "").slice(0, 20) || "x"; }   // 경로·커밋 글에는 영문·숫자만
+	function photoPath(headId, now) {
+		var d = now || new Date(), az = "abcdefghijklmnopqrstuvwxyz0123456789", r = rand(4), s = "";
+		for (var i = 0; i < 4; i++) s += az[r[i] % az.length];
+		return "사진/" + dayKey(d) + "-" + pad2(d.getHours()) + pad2(d.getMinutes()) + pad2(d.getSeconds()) + "_" + photoDept(headId) + "_" + s + ".jpg";
+	}
+	function photoUrl(path) { return API + "/contents/" + String(path).split("/").map(encodeURIComponent).join("/"); }
+	// 파일 하나 → {blob(JPEG, EXIF 없음), preview(data: 주소), w, h, size}. 못 쓰면 photo 표시가 붙은 Error
+	async function preparePhoto(file) {
+		if (!file || PHOTO_TYPES.indexOf(String(file.type || "").toLowerCase()) < 0) throw photoErr("이 꼴은 못 엽니다. 캡처(PNG)로 보내 주세요.");
+		if (file.size > PHOTO_RAW_MAX) throw photoErr("사진이 너무 큽니다. 25MB까지 됩니다.");
+		var bmp = null;
+		try { bmp = await g.createImageBitmap(file, { imageOrientation: "from-image" }); } catch (e) { bmp = null; }
+		if (!bmp) throw photoErr("이 꼴은 못 엽니다. 캡처(PNG)로 보내 주세요.");
+		var k = Math.min(1, PHOTO_SIDE / Math.max(bmp.width, bmp.height, 1));
+		var w = Math.max(1, Math.round(bmp.width * k)), h = Math.max(1, Math.round(bmp.height * k));
+		var cv = document.createElement("canvas");
+		cv.width = w; cv.height = h;
+		var cx = cv.getContext("2d");
+		cx.fillStyle = "#fff"; cx.fillRect(0, 0, w, h);          // 비친 PNG 바탕은 흰색으로
+		cx.drawImage(bmp, 0, 0, w, h);                           // 다시 그리면 EXIF(GPS·기기·시각)가 모두 빠진다
+		if (bmp.close) bmp.close();
+		var blob = null;
+		for (var i = 0; i < PHOTO_QUAL.length; i++) {
+			var q = PHOTO_QUAL[i];
+			blob = await new Promise(function (res) { cv.toBlob(res, "image/jpeg", q); });
+			if (blob && blob.size <= PHOTO_MAX) break;
+			blob = null;
+		}
+		var preview = blob ? cv.toDataURL("image/jpeg", 0.8) : "";
+		cv.width = 0; cv.height = 0;
+		if (!blob) throw photoErr("줄여도 1.5MB가 넘어 보낼 수 없습니다. 화면 일부만 캡처해 주세요.");
+		return { blob: blob, preview: preview, w: w, h: h, size: blob.size };
+	}
+	// 보내면 안 되는 까닭 (사진과 함께). 보내도 되면 ""
+	function photoProblem(text, list, now) {
+		var body = String(text || "");
+		if (!REPO_OK.test(REPO)) return "답 저장소 이름이 비공개 저장소가 아닙니다. 보내지 않습니다.";
+		if (Array.from(body).length > REPLY_MAX) return "답은 " + REPLY_MAX + "자까지입니다.";
+		if (badIn(body)) return "키·전화번호는 답에 쓰지 마세요.";
+		if (!list.length) return "사진이 없습니다.";
+		if (list.length > PHOTO_PER_SEND) return "사진은 한 번에 " + PHOTO_PER_SEND + "장까지입니다.";
+		for (var i = 0; i < list.length; i++) {
+			var p = list[i];
+			if (!p || !p.blob || !(p.blob.size > 0) || p.blob.size > PHOTO_MAX) return "사진을 다시 골라 주세요.";
+		}
+		var dk = dayKey(now || new Date());
+		if (photoDay.d === dk && photoDay.n + list.length > PHOTO_DAY_MAX) return "오늘은 많이 보냈습니다. 사진은 하루 " + PHOTO_DAY_MAX + "장까지입니다.";
+		if (!mem || !mem.gh) return "사진은 바로 보내기(출입증)가 있을 때만 보낼 수 있습니다. 글만 보내 주세요.";
+		return "";
+	}
+	function onReplyPhotos(headId, text, list) {
+		var why = photoProblem(text, list);
+		if (why) { if (g.alert) g.alert(why); return false; }
+		touch();
+		var dk = dayKey(new Date());
+		if (photoDay.d !== dk) photoDay = { d: dk, n: 0 };
+		photoDay.n += list.length;          // 보내기를 시작할 때 센다 (단추가 되풀이돼도 50장에서 멈춤)
+		sendPhotos(headId, String(text || ""), list);
+		return true;
+	}
+	async function putPhoto(headId, blob) {
+		var bytes = new Uint8Array(await blob.arrayBuffer());
+		var content = b64(bytes);
+		bytes = null;
+		for (var n = 0; n < 3; n++) {
+			var t = mem && mem.gh;
+			if (!t) return { fail: 0 };                 // 그 사이 잠겼다 (15분 자동 잠금)
+			var path = photoPath(headId), r = null;
+			try {
+				r = await fetch(photoUrl(path), { method: "PUT", headers: ghHeaders(t), body: JSON.stringify({ message: "사옥 사진: [" + photoDept(headId) + "]", content: content }) });
+			} catch (e) { r = null; }
+			t = null;
+			if (r && (r.status === 201 || r.status === 200)) {
+				var sha = "";
+				try { var j = await r.json(); sha = String((j && j.content && j.content.sha) || ""); } catch (e) { sha = ""; }
+				content = "";
+				return { path: path, sha: sha };
+			}
+			if (!r || r.status !== 422) return { fail: r ? r.status : 0 };   // 422 = 같은 이름이 있다 → 이름을 다시
+		}
+		content = "";
+		return { fail: 422 };
+	}
+	// 올린 사진을 지운다 (되돌리기·반쪽 막기). 다 지웠으면 true. 지워도 커밋 기록에는 남는다 (보안 07 3절 3)
+	async function dropPhotos(headId, pics) {
+		var all = true;
+		for (var i = 0; i < pics.length; i++) {
+			var p = pics[i], t = mem && mem.gh, ok = false;
+			if (t && p.sha) {
+				try {
+					var r = await fetch(photoUrl(p.path), { method: "DELETE", headers: ghHeaders(t), body: JSON.stringify({ message: "사옥 사진 되돌림: [" + photoDept(headId) + "]", sha: p.sha }) });
+					ok = r.ok;
+				} catch (e) { ok = false; }
+			}
+			t = null;
+			if (!ok) all = false;
+		}
+		return all;
+	}
+	async function sendPhotos(headId, text, list) {
+		var put = [], fail = -1;
+		for (var i = 0; i < list.length; i++) {
+			var res = null;
+			try { res = await putPhoto(headId, list[i].blob); } catch (e) { res = { fail: 0 }; }
+			if (!res.path) { fail = res.fail; break; }
+			put.push(res);
+		}
+		for (var k = 0; k < list.length; k++) { list[k].blob = null; list[k].preview = ""; }   // 원본·줄인 그림은 보낸 뒤 바로 버린다
+		if (fail >= 0) {
+			await dropPhotos(headId, put);
+			emit({ headId: headId, text: text, state: "failed" });
+			var perm = fail === 401 || fail === 403 || fail === 404;
+			toast(perm ? "사진을 올리지 못했습니다. 출입증에 사진 권한(Contents: Read and write)이 있는지 봐 주세요. 보내지 않았습니다."
+				: "사진을 올리지 못해 보내지 않았습니다. 다시 보내 주세요.", "", null, 10000);
+			return;
+		}
+		var body = text + (text ? "\n\n" : "") + put.map(function (p) { return "사진: " + p.path; }).join("\n");
+		await postIssue(headId, text, body, put);
 	}
 
 	// ---------------------------------------------------------------- 화면 (브라우저에서만)
@@ -429,7 +576,10 @@
 		// 아래는 잠그기 도구(lock_make.html)와 시험이 쓴다
 		sealV1: sealV1, openV1: openV1, sealV2: sealV2, openV2: openV2, openBox: openBox,
 		makeKeys: makeKeys, unlockPrivate: unlockPrivate, checkState: checkState, b64: b64, unb64: unb64,
-		rekeyToken: rekeyToken, checkToken: checkToken, tokenOk: tokenOk, REPO: REPO
+		rekeyToken: rekeyToken, checkToken: checkToken, tokenOk: tokenOk, REPO: REPO,
+		// 사진 보내기 (보안 07. 개발 30)
+		preparePhoto: preparePhoto, photoProblem: photoProblem, photoPath: photoPath, canPhoto: function () { return !!(mem && mem.gh); },
+		PHOTO_WARN: PHOTO_WARN, PHOTO_PER_SEND: PHOTO_PER_SEND, PHOTO_DAY_MAX: PHOTO_DAY_MAX, PHOTO_MAX: PHOTO_MAX, PHOTO_SIDE: PHOTO_SIDE
 	};
 	if (typeof document === "undefined") api.unlockKeyBoxForTest = unlockKeyBox;   // node 시험에서만 (브라우저에는 열지 않음)
 	g.OfficeLock = api;
