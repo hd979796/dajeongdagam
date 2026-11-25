@@ -369,7 +369,9 @@ function drawTodos(){
     var sec=el("section","dept"); sec.id="todo-"+d; sec.style.setProperty("--c",r.c);
     var hd=el("h3","dept-h"), ring=el("span","ring"); ring.style.setProperty("--c",r.c);
     if(r.face){ var im=new Image(); im.src=r.face; im.alt=""; ring.appendChild(im); }
-    hd.appendChild(ring); hd.appendChild(document.createTextNode(r.name));
+    if(h){ var tk=el("button","talk"); tk.type="button"; tk.title=r.name+" 팀장에게 말 걸기"; tk.setAttribute("aria-label",r.name+" 팀장에게 말 걸기");
+      tk.appendChild(ring); tk.appendChild(el("span","nm",r.name)); tk.addEventListener("click",function(){talkTo(d)}); hd.appendChild(tk); }
+    else { hd.appendChild(ring); hd.appendChild(document.createTextNode(r.name)); }
     var n=todos.filter(function(t){return t.dept===d&&tdActive(t)}).length;
     hd.appendChild(el("span","cnt",n?"할 일 "+n+"개":"")); sec.appendChild(hd);
     var mine=todos.filter(function(t){return t.dept===d});
@@ -433,8 +435,16 @@ function pick(id){
   if(!H[id]) return; barId=id;
   Array.prototype.forEach.call($("who").children,function(b){b.setAttribute("aria-checked",String(b.dataset.id===id))});
   $("barText").placeholder=H[id].r.name.replace(/실$/,"")+" 팀장에게";
+  $("barTo").textContent=$("barText").placeholder;
   drawBar();
 }
+/* 대화 줄 접기·펴기 (대표님 12:42): 접으면 "말 걸기" 띠 한 줄. 처음엔 접힌 채로 */
+function setFold(on){
+  $("bar").classList.toggle("fold",on); $("barStrip").setAttribute("aria-expanded",String(!on)); barSize();
+}
+function talkTo(id){ pick(id); setFold(false); $("barText").focus(); }
+$("barStrip").addEventListener("click",function(){ setFold(false); $("barText").focus(); });
+$("foldBtn").addEventListener("click",function(){ setFold(true); $("barStrip").focus(); });
 function drawBar(){ var h=H[barId]; if(h) drawMsgs($("barlog"),h); }
 $("barText").addEventListener("input",function(){$("barSend").disabled=!this.value.trim()});
 $("barText").addEventListener("keydown",function(e){if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)){e.preventDefault();$("barForm").requestSubmit()}});
@@ -451,7 +461,7 @@ if(window.ResizeObserver) new ResizeObserver(function(){barSize(); clearTimeout(
 /* 기록 펼침: 대표님이 직접 누르기 전에는 화면 높이로 정한다(휴대폰 가로·낮은 화면은 접음). 돌리면 다시 정함 */
 var logByUser=false;
 function logAuto(){ if(logByUser) return; var on=window.innerHeight>=600; $("bar").classList.toggle("open",on); $("logBtn").setAttribute("aria-expanded",String(on)); barSize(); }
-logAuto(); window.addEventListener("resize",logAuto);
+logAuto(); window.addEventListener("resize",function(){logAuto(); barSize();});
 pick("pd");
 
 /* ── 들어가기: 비밀번호 → 상자 풀기(lock.js) → office.load → 들어감 (개발 26) ── */

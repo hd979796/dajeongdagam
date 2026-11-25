@@ -17,7 +17,7 @@
     --alarm:#e2332a;
   }
   *{box-sizing:border-box}
-  html,body{margin:0;height:100%}
+  html,body{margin:0} html{height:100%} body{min-height:100%} /* body 높이를 묶지 않아야 아래 여백(--barh)이 내용 뒤에 생긴다 */
   body{
     font-family:"Pretendard","Pretendard Variable",-apple-system,"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",sans-serif;
     background:radial-gradient(ellipse at 20% 0%,#fff8ea 0%,var(--paper) 55%,var(--paper2) 100%);
@@ -311,6 +311,17 @@
   .bar:not(.open) .barlog{display:none}
   .bar .compose{padding:6px 12px}
   .bar .replynote{padding:0 14px 2px}
+  /* 대화 줄 접기 (대표님 12:42) */
+  .bar.fold .bar-top,.bar.fold .barlog,.bar.fold .compose,.bar.fold .replynote{display:none}
+  .barstrip{display:none;width:100%;align-items:center;gap:8px;border:0;background:transparent;padding:8px 16px;font-size:15px;font-weight:800;text-align:left;cursor:pointer;color:var(--ink)}
+  .bar.fold .barstrip{display:flex}
+  .barstrip .to{color:var(--ink2);font-weight:700;font-size:14px}
+  .barstrip .tri{margin-left:auto;font-size:13px;color:var(--ink2)}
+  .barstrip:focus-visible{outline:3px solid var(--gold);outline-offset:-3px;border-radius:12px}
+  .foldbtn{padding:6px 10px}
+  .dept-h .talk{display:inline-flex;align-items:center;gap:10px;border:0;background:none;padding:2px 10px 2px 0;margin:0;font:inherit;font-weight:800;color:inherit;cursor:pointer;border-radius:999px}
+  .dept-h .talk:hover .nm,.dept-h .talk:focus-visible .nm{text-decoration:underline;text-underline-offset:3px}
+  .dept-h .talk:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
   @media (orientation:portrait){ .hero{width:clamp(30px,10vw,54px)} }
   @media (orientation:landscape) and (max-height:480px){ .whob{width:28px;height:28px} .bar .replynote{display:none} .barlog{max-height:30vh} }
   @media (prefers-reduced-motion:reduce){ .head .typing i{animation:none;opacity:.8} }
@@ -344,10 +355,12 @@
 <footer>다정다감컴퍼니 · 삼한제일</footer>
 
 <!-- 늘 있는 대화 줄 (대표님 11:26, 개발 26) -->
-<section class="bar" id="bar" hidden aria-label="팀장에게 말하기">
+<section class="bar fold" id="bar" hidden aria-label="팀장에게 말하기">
+  <button class="barstrip" id="barStrip" type="button" aria-expanded="false" aria-controls="barText"><span>말 걸기</span><span class="to" id="barTo">총괄이사 팀장에게</span><span class="tri" aria-hidden="true">▴ 펴기</span></button>
   <div class="bar-top">
     <div class="who" id="who" role="radiogroup" aria-label="받는 팀장"></div>
     <button class="pill" id="logBtn" type="button" aria-expanded="true" aria-controls="barlog">기록</button>
+    <button class="pill foldbtn" id="foldBtn" type="button" aria-label="대화 줄 접기">▾</button>
   </div>
   <div class="msgs barlog" id="barlog" aria-live="polite"></div>
   <form class="compose" id="barForm">
