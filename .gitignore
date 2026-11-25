@@ -1,0 +1,10 @@
+state*.json
+office_pub.json
+*.bak
+.DS_Store
+.env
+*키*.txt
+demo_state.js
+대표님_준비.html
+junbi.js
+words_ko.js
