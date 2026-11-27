@@ -6,13 +6,16 @@ var ROOMS = [
   {id:"ceo",  grp:"A", name:"대표실",     face:null, hero:"face_hero.png", c:"#c8553d", floor:"mat"},
   {id:"pd",   grp:"A", name:"총괄이사실", face:"face_hwarang.png",  c:"#5d7fa8"},
   {id:"plan", grp:"A", name:"기획실",     face:"face_teller.png",   c:"#7d9a4f"},
-  {id:"item", grp:"A", name:"아이템실",   face:"face_merchant.png", c:"#d39a3a"},
   {id:"art",  grp:"A", name:"디자인실",   face:"face_herb.png",     c:"#c66f8a"},
   {id:"dev",  grp:"B", name:"개발실",     face:"face_smith.png",    c:"#5f8f8a", floor:"tile"},
   {id:"qa",   grp:"B", name:"QA실",       face:"face_villager.png", c:"#8a79b8", floor:"tile"},
   {id:"sec",  grp:"B", name:"보안실",     face:"face_patrol.png",   c:"#6b7f63"},
-  {id:"acct", grp:"B", name:"회계실",     face:"face_keeper.png",   c:"#a8814f"},
-  {id:"pr",   grp:"B", name:"홍보실",     face:"face_nangdo.png",   c:"#e07a52"}
+  {id:"pr",   grp:"B", name:"홍보실",     face:"face_nangdo.png",   c:"#e07a52"},
+  /* 외주 층 (대표님 11/27): fl:2 는 외주 복도·외주 휴게실을 쓴다. OA = 가로 화면에선 문이 위, 세로 화면에선 문이 오른쪽 */
+  {id:"odir", grp:"OA", fl:2, name:"외주이사실",     face:"face_yusin.png",  c:"#2f6f6a"},
+  {id:"oqa",  grp:"OA", fl:2, name:"외주 QA실",      face:"face_guard.png",  c:"#7a8fb0", floor:"tile"},
+  {id:"o3d",  grp:"B",  fl:2, name:"3D디자인실",     face:"face_tanner.png", c:"#b9783f"},
+  {id:"osnd", grp:"B",  fl:2, name:"사운드디자인실", face:"face_nang.png",   c:"#9a6fb0"}
 ];
 var FURN = {
   ceo: [["rug",30,18,44,46],["desk",38,46,26,14],["shelf",8,30,4,56],["plant",80,22,8,0],["plant",80,70,8,0],["jar",10,82,6,0],["chair-big",46,26,10,0]],
@@ -20,9 +23,10 @@ var FURN = {
   def: [["desk",22,46,56,15],["mon",42,48,16,7],["plant",78,72,14,0]]
 };
 var PROPS = {
-  pd:[["shelf",8,72,30,7]], plan:[["shelf",8,72,34,7],["round",72,22,14,0]], item:[["chest",10,70,22,14],["jar",40,74,10,0]],
+  pd:[["shelf",8,72,30,7],["chest",50,72,18,12]], plan:[["shelf",8,72,34,7],["round",72,22,14,0],["chest",10,22,16,12]],
   art:[["jar",10,72,10,0],["jar",24,74,8,0],["poster",62,20,22,10]], qa:[["phone",12,72,9,12],["phone",26,72,9,12]],
-  sec:[["chest",10,70,24,14]], acct:[["shelf",8,72,34,7],["chest",50,72,18,12]], pr:[["poster",60,20,26,12],["poster",12,72,18,10]]
+  sec:[["chest",10,70,24,14]], pr:[["poster",60,20,26,12],["poster",12,72,18,10]],
+  odir:[["shelf",8,72,30,7]], oqa:[["phone",12,72,9,12],["phone",26,72,9,12]], o3d:[["jar",10,72,10,0],["poster",62,20,22,10]], osnd:[["round",72,22,14,0],["jar",12,74,8,0]]
 };
 /* 휴게실: 소파·차·창가. 가로(L)는 세로로 긴 방, 세로(P)는 가로로 넓은 방 */
 var REST_FURN = [
@@ -31,6 +35,9 @@ var REST_FURN = [
 ];
 var REST_L = [[.2,.2],[.2,.4],[.2,.6],[.2,.8],[.74,.17],[.74,.39],[.74,.61],[.74,.83],[.47,.86]];
 var REST_P = [[.14,.4],[.3,.4],[.7,.4],[.86,.4],[.2,.77],[.35,.77],[.5,.77],[.65,.77],[.8,.77]];
+/* 외주 휴게실 자리 (넷) */
+var REST2_L = [[.3,.36],[.7,.36],[.3,.72],[.7,.72]];
+var REST2_P = [[.2,.6],[.4,.6],[.6,.6],[.8,.6]];
 
 var $ = function(id){return document.getElementById(id)};
 var plan = $("plan");
@@ -66,6 +73,20 @@ plan.appendChild(rest);
 var hall=document.createElement("div"); hall.className="hall"; hall.setAttribute("aria-hidden","true");
 hall.innerHTML='<span class="runner"></span><span class="f plant p1"></span><span class="sign">다정다감컴퍼니<small>삼한제일</small></span>';
 plan.appendChild(hall);
+/* 외주 층: 층 이름 띠 둘, 외주 복도, 외주 휴게실 */
+[["fl1","본사"],["fl2","외주"]].forEach(function(f){
+  var s=document.createElement("div"); s.className="flstrip "+f[0]; s.style.gridArea=f[0]; s.textContent=f[1]+" 층"; plan.appendChild(s);
+});
+var rest2=document.createElement("div");
+rest2.className="room R R2 lounge"; rest2.style.gridArea="rest2"; rest2.style.setProperty("--c","#2f6f6a");
+rest2.innerHTML='<span class="door"></span><span class="tag"><i></i>외주 휴게실</span>';
+[["round",40,44,20,0],["plant",6,70,12,0]].forEach(function(p){rest2.appendChild(piece.apply(null,p))});
+plan.appendChild(rest2);
+var hall2=document.createElement("div"); hall2.className="hall hall2"; hall2.style.gridArea="hall2"; hall2.setAttribute("aria-hidden","true");
+hall2.innerHTML='<span class="runner"></span><span class="sign">외주<small>삼한제일</small></span>';
+plan.appendChild(hall2);
+var restN={1:0,2:0};
+function restOf(h){return h.r.fl===2?rest2:rest}
 var layer=document.createElement("div"); layer.className="heads"; plan.appendChild(layer);
 
 /* 팀장 얼굴 */
@@ -74,7 +95,7 @@ ROOMS.forEach(function(r){
   var el=document.createElement("button"); el.type="button"; el.className="head"; el.style.setProperty("--c",r.c);
   el.innerHTML='<span class="ring"></span>'+HAND_SVG+'<span class="typing" aria-hidden="true"><i></i><i></i><i></i></span>';
   var im=new Image(); im.src=r.face; im.alt=""; im.decoding="async"; el.querySelector(".ring").appendChild(im);
-  var h={id:r.id, r:r, el:el, place:"rest", pos:{x:0,y:0}, walkId:0, rest:order.length,
+  var h={id:r.id, r:r, el:el, place:"rest", pos:{x:0,y:0}, walkId:0, rest:restN[r.fl===2?2:1]++,
          st:{status:"rest",task:"",hand:false,urgent:false,msgs:[]}, local:[], chosen:{}, handAck:null, urgAck:null, wasRaised:false};
   /* 손들기·급한 일이면 대화창, 아니면 "지금 하는 일" 말풍선 (대표님 11:26) */
   el.addEventListener("click",function(e){ e.stopPropagation(); if(raised(h)||urgentOpen(h)) openChat(h.id); else if(todoCount(h.id)) goTodo(h.id); else showTip(h); });
@@ -89,11 +110,11 @@ function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
 function seatOf(h,place){
   var r,s;
   if(place==="room"){r=rel(roomEl[h.id]); s=h.id==="dev"?[.4,.52]:[.5,.5];}
-  else{r=rel(rest); s=(portrait()?REST_P:REST_L)[h.rest];}
+  else{var o=h.r.fl===2; r=rel(restOf(h)); s=(portrait()?(o?REST2_P:REST_P):(o?REST2_L:REST_L))[h.rest]||[.5,.5];}
   return {x:r.x+r.w*s[0],y:r.y+r.h*s[1]};
 }
-function doorOf(h,place){return mid((place==="room"?roomEl[h.id]:rest).querySelector(".door"))}
-function hallPt(p){var r=rel(hall); return r.w>=r.h?{x:clamp(p.x,r.x+8,r.x+r.w-4),y:r.y+r.h/2}:{x:r.x+r.w/2,y:clamp(p.y,r.y+8,r.y+r.h-4)}}
+function doorOf(h,place){return mid((place==="room"?roomEl[h.id]:restOf(h)).querySelector(".door"))}
+function hallPt(p,h){var r=rel(h&&h.r.fl===2?hall2:hall); return r.w>=r.h?{x:clamp(p.x,r.x+8,r.x+r.w-4),y:r.y+r.h/2}:{x:r.x+r.w/2,y:clamp(p.y,r.y+8,r.y+r.h-4)}}
 function setPos(h,p,ms){
   h.pos=p; var s=h.el.offsetWidth;
   h.el.style.transitionDuration=(ms||0)+"ms";
@@ -102,7 +123,7 @@ function setPos(h,p,ms){
 function walk(h,to){
   var tok=++h.walkId, from=h.place; h.place=to; if(tipId===h.id) hideTip();
   var d1=doorOf(h,from), d2=doorOf(h,to);
-  var pts=[d1,hallPt(d1),hallPt(d2),d2,seatOf(h,to)];
+  var pts=[d1,hallPt(d1,h),hallPt(d2,h),d2,seatOf(h,to)];
   var speed=Math.max(150,plan.clientWidth/4.5,plan.clientHeight/4), i=0; /* 화면 크기와 상관없이 3~4초 안에 도착 */
   h.el.classList.add("walking");
   (function step(){
@@ -349,7 +370,7 @@ function sendReply(h,text,photos){
 function redraw(){ if(openId) drawChat(); drawBar(); drawTodos(); }
 
 /* ── 대표님 할 일 판 (대표님 11:51) ── */
-var TODO_DEPTS=["pd","plan","item","art","dev","qa","sec","acct","pr"];
+var TODO_DEPTS=["pd","plan","art","dev","qa","sec","pr","odir","o3d","osnd","oqa"];
 var todos=[], tdLocal={};      /* tdLocal[id] = {done:bool, pick:"1", text:"보낸 글"} — 이 화면에서 누른 것 (메모리만) */
 function readTodos(list){
   todos=(Array.isArray(list)?list:[]).slice(0,60).map(function(t,i){

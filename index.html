@@ -40,12 +40,16 @@
     position:relative; width:100%;
     display:grid; gap:0;
     grid-template-columns:1fr 1fr 1fr 1fr 1fr 1fr 1.5fr;
-    grid-template-rows:1fr .42fr 1fr;
+    grid-template-rows:.2fr 1fr .42fr 1fr .2fr .42fr 1fr;
     grid-template-areas:
-      "ceo ceo pd plan item art rest"
+      "fl1 fl1 fl1 fl1 fl1 fl1 fl1"
+      "ceo ceo pd plan plan art rest"
       "hall hall hall hall hall hall rest"
-      "dev dev qa sec acct pr rest";
-    aspect-ratio:7.5/3.25; max-height:calc(100vh - 70px); max-height:calc(100dvh - 70px);
+      "dev dev qa sec pr pr rest"
+      "fl2 fl2 fl2 fl2 fl2 fl2 fl2"
+      "hall2 hall2 hall2 hall2 hall2 hall2 rest2"
+      "odir odir o3d o3d osnd oqa rest2";
+    aspect-ratio:7.5/5.7; max-height:calc(100vh - 70px); max-height:calc(100dvh - 70px);
     background:var(--wall); padding:10px; border-radius:18px;
     box-shadow:0 10px 24px rgba(122,84,52,.22), inset 0 0 0 3px #a8774f;
   }
@@ -71,6 +75,12 @@
   .A .door{bottom:0;left:38%;width:24%;height:6px}
   .B .door{top:0;left:38%;width:24%;height:6px}
   .R .door{left:0;top:42%;width:6px;height:16%}
+  /* 외주 층 (11/27) */
+  .OA .door{top:0;left:38%;width:24%;height:6px}
+  @media (orientation:landscape){ .R2 .door{top:6%;height:18%} }
+  .flstrip{display:flex;align-items:center;padding:0 10px;font-weight:800;font-size:clamp(10px,1.3vw,14px);letter-spacing:.08em;color:#fff7ea;background:#a8774f;border-radius:4px;margin:2px 0}
+  .flstrip.fl2{background:#2f6f6a}
+  .hall2 .runner{background:linear-gradient(90deg,#255a56,#2f6f6a 10%,#2f6f6a);box-shadow:inset 0 0 0 3px #9fd0c788}
 
   .tag{position:absolute;left:8px;top:8px;z-index:6;background:var(--hanji);border-radius:7px;
     padding:3px 7px;font-size:clamp(10px,1.2vw,14px);font-weight:700;white-space:nowrap;box-shadow:0 2px 0 rgba(150,105,65,.35)}
@@ -192,9 +202,12 @@
   /* ── 세로 화면 ── */
   @media (orientation:portrait){
     .plan{grid-template-columns:1fr .36fr 1fr;
-      grid-template-rows:1.3fr 1fr 1fr 1fr 1fr 1.5fr;
-      grid-template-areas:"ceo hall dev" "pd hall qa" "plan hall sec" "item hall acct" "art hall pr" "rest rest rest";
-      aspect-ratio:2.36/5.8; max-height:none}
+      grid-template-rows:.28fr 1.3fr 1fr 1fr 1fr 1.5fr .28fr 1fr 1fr 1.1fr;
+      grid-template-areas:"fl1 fl1 fl1" "ceo hall dev" "pd hall qa" "plan hall sec" "art hall pr" "rest rest rest" "fl2 fl2 fl2" "odir hall2 o3d" "oqa hall2 osnd" "rest2 rest2 rest2";
+      aspect-ratio:2.36/8.1; max-height:none}
+    .OA .door{bottom:auto;left:auto;right:0;top:36%;width:6px;height:28%}
+    .hall2 .runner{background:linear-gradient(180deg,#255a56,#2f6f6a 8%,#2f6f6a)}
+    .flstrip{font-size:clamp(11px,3.2vw,14px)}
     .A .door{bottom:auto;left:auto;right:0;top:36%;width:6px;height:28%}
     .B .door{top:36%;left:0;width:6px;height:28%}
     .R .door{left:40%;top:0;width:20%;height:6px}
@@ -296,7 +309,7 @@
   .m .wait.fail{color:var(--alarm)}
   /* 3. 아래 대화 줄 */
   body{padding-bottom:var(--barh,0px)}
-  .plan{max-height:calc(100vh - 70px - var(--barh,0px));max-height:calc(100dvh - 70px - var(--barh,0px))}
+  .plan{max-height:none}   /* 11/27: 층이 둘이라 한 화면에 가두지 않고 아래로 넘긴다 */
   .bar{position:fixed;left:0;right:0;bottom:0;z-index:35;margin:0 auto;width:min(900px,100%);background:var(--hanji);
     border-radius:16px 16px 0 0;box-shadow:0 -6px 20px rgba(110,70,40,.22);padding:6px 0 max(4px,env(safe-area-inset-bottom))}
   .bar[hidden]{display:none}
